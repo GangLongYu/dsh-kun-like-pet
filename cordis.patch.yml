@@ -1,0 +1,5 @@
+# Install the Host half. Because this package also declares `dsh.client`, the
+# Web modules service publishes plugin/lib/client.js into the browser roster.
+- insert:
+    - id: kun-like-pet
+      name: dsh-kun-like-pet

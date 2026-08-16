@@ -1,4 +1,4 @@
-// 生成 cordis_define 一键安装载荷
+// 生成 1.x cordis_define 历史载荷（2.x 静态 bundle 不使用此文件）
 // 用法：node scripts/build-kunpet-package.mjs > kunpet.package.json
 // 产物可直接粘贴给 DSH 的 cordis_define 工具（code.host / code.client 已内嵌源码）
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'

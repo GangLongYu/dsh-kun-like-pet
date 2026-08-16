@@ -1,8 +1,32 @@
 {
   "name": "dsh-kun-like-pet",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": false,
-  "description": "Kun Like 桌宠 —— DeepSeek Harness 桌面宠物插件：Web 界面右下角的小坤宠，随 Agent 工作状态切换 9 种动作，任务完成时播放「你干嘛~哎哟」",
+  "description": "Kun Like 桌宠 —— 可安装的 DeepSeek Harness 静态 bundle 插件",
+  "type": "module",
+  "main": "./plugin/lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./plugin/lib/index.js"
+    },
+    "./client": {
+      "default": "./plugin/lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
   "keywords": [
     "deepseek-harness",
     "dsh",
@@ -15,17 +39,37 @@
   "author": "liyupi",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/liyupi/dsh-kun-like-pet.git"
+    "url": "git+https://github.com/GangLongYu/dsh-kun-like-pet.git"
   },
   "files": [
-    "src",
+    "plugin/lib",
+    "plugin/src",
+    "plugin/tsconfig.json",
+    "plugin/tsdown.config.ts",
     "assets",
     "docs",
     "demo",
     "scripts",
-    "kunpet.package.json"
+    "cordis.patch.yml",
+    "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node scripts/validate.mjs"
+    "build": "tsdown --config plugin/tsdown.config.ts",
+    "test": "node scripts/validate.mjs && node scripts/validate-bundle.mjs",
+    "pack:check": "npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22.19"
   }
 }

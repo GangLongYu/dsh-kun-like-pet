@@ -1,6 +1,6 @@
 // =============================================================================
-// Kun Like 桌宠 · DSH 动态插件（Host 半）
-// 用于 DSH 的 cordis_define 工具：code.host 字段
+// Kun Like 桌宠 · DSH 1.x 动态插件历史参考（Host 半）
+// 2.x 静态 bundle 不加载此文件；当前实现位于 plugin/src/index.ts。
 //
 // 职责：
 //   1. 读取本地素材（精灵图 + 完成音），通过 webServer 注册 HTTP 路由给浏览器加载
@@ -8,15 +8,15 @@
 //   3. 任务完成时由宿主进程用系统命令播放「你干嘛~哎哟」（全窗口/全会话可闻）
 //   4. 提供 pet-state RPC 与 kun_pet_debug 调试工具
 //
-// 安装：见 README.md「安装」章节
+// 如需研究旧版 cordis_define 载荷，可配合 kunpet.package.json 阅读。
 // =============================================================================
 
 // ===== 配置区（按需修改） =====
 const CONFIG = {
   // 精灵图路径（8 列 × 9 行、每格 192×208 的 WebP）
-  spritePath: '/Users/yupi/.codex/pets/kun-like/spritesheet.webp',
+  spritePath: '/absolute/path/to/dsh-kun-like-pet/assets/spritesheet.webp',
   // 任务完成提示音路径（mp3）
-  voicePath: '/Users/yupi/Downloads/你干嘛哎呦.mp3',
+  voicePath: '/absolute/path/to/dsh-kun-like-pet/assets/voice.mp3',
   // 宿主进程系统级播放命令（macOS 用 afplay；Windows 可用 powershell -c (New-Object Media.SoundPlayer '...').PlaySync()；Linux 可用 ffplay -nodisp -autoexit）
   playCommand: (path) => "afplay '" + path.replace(/'/g, "'\\''") + "'",
   // 状态轮询间隔（毫秒）
