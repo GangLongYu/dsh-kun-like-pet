@@ -12,6 +12,9 @@
 - `dsh.client.inject` 中已下线的 `@deepseek-ai/dsh-client-runtime` 换成真实存在的 `@deepseek-ai/dsh-client-ui-renderer`。
 - `tsdown.config.ts` 的客户端 external 列表改为对齐 0.2 web shell 的真实模块表（react / react-dom / cordis / dsh-client-store / dsh-client-ui-slots / dsh-client-ui-primitives / dsh-client-ui-dockkit）。
 - 校验脚本新增回归护栏：DSH peer 范围必须面向 0.2、源码不得再用 `shell.run()`、waterfall 必须放行 `next()`、`voice.wav` 必须是 PCM、构建产物不得残留 `dsh-client-runtime`。
+- 新增两个**功能**冒烟测试并接入 `npm test`（都不需要浏览器/网络/端口）：
+  - `scripts/smoke-host.mjs`：用最小 cordis ctx 桩真跑 Host 构建产物，覆盖素材读取、三条 HTTP 路由、0.2 `defineTool` 契约、状态机全链路、waterfall 放行、dispose 即净。
+  - `scripts/smoke-client.mjs`：按 DSH 模块加载器契约真 materialize Client 构建产物，覆盖注册 id、导出契约、`shell.overlay` 注册、样式生命周期、组件渲染树。
 - README 重写：补上 0.2 适配说明、三种本地安装方式、旧安装修复、以及把新代码推到 GitHub 的完整流程。
 
 ## 2.0.0 — DSH 静态 Bundle

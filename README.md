@@ -141,9 +141,20 @@ Get-PnpDevice -Class AudioEndpoint | Select-Object Status, FriendlyName
 ```bash
 npm install         # 只装 tsdown / typescript / @types/node 与 peer 类型包
 npm run build       # plugin/src → plugin/lib
-npm test            # 素材、源码、bundle 清单和构建产物校验
+npm test            # 结构校验（素材/源码/bundle）+ Host、Client 两半的功能冒烟测试
 npm run pack:check  # 检查 npm/GitHub 发布包内容
 ```
+
+`npm test` 串起四个脚本，都不需要浏览器、网络或端口：
+
+| 脚本 | 覆盖什么 |
+| --- | --- |
+| `scripts/validate.mjs` | 素材格式与尺寸契约（8×9、192×208）、`voice.wav` 是 PCM、源码关键片段、0.2 回归护栏（不得再用 `shell.run()`、waterfall 必须放行 `next()`）|
+| `scripts/validate-bundle.mjs` | `package.json` 的 `dsh.bundle` / `dsh.client` 声明、DSH peer 范围面向 0.2、`plugin/lib` 语法有效且与源码约定一致 |
+| `scripts/smoke-host.mjs` | 用最小 cordis ctx 桩真跑 `plugin/lib/index.js`：素材读取、三条 HTTP 路由、0.2 `defineTool` 契约、状态机 `idle→review→working→failed→celebrating`、`agent/request-error` 放行 `next()`、dispose 后资源清空 |
+| `scripts/smoke-client.mjs` | 按模块加载器契约真 materialize `plugin/lib/client.js`：注册 id、导出契约、注册进 `shell.overlay`、样式生命周期、组件渲染树 |
+
+这两个冒烟测试正是冲着「升级 DSH 后插件静默失效」这个坑写的：peer 门禁、`shell.run()` 被移除、waterfall 语义变化，任何一条复发都会让 `npm test` 直接红。
 
 修改 `plugin/src/` 后必须重新执行 `npm run build`，并把更新后的 `plugin/lib/` 一并提交（`plugin/lib` 是仓库的一部分，GitHub 安装直接用它）。独立动画预览可直接运行 `demo/index.html`。
 

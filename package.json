@@ -55,7 +55,7 @@
   ],
   "scripts": {
     "build": "tsdown --config plugin/tsdown.config.ts",
-    "test": "node scripts/validate.mjs && node scripts/validate-bundle.mjs",
+    "test": "node scripts/validate.mjs && node scripts/validate-bundle.mjs && node scripts/smoke-host.mjs && node scripts/smoke-client.mjs",
     "pack:check": "npm pack --dry-run"
   },
   "peerDependencies": {
