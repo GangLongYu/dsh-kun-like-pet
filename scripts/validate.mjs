@@ -15,8 +15,10 @@ const ok = (cond, msg) => {
 // 1. 素材文件
 const spritePath = join(root, 'assets', 'spritesheet.webp')
 const voicePath = join(root, 'assets', 'voice.mp3')
+const voiceWavPath = join(root, 'assets', 'voice.wav')
 ok(existsSync(spritePath), 'assets/spritesheet.webp 存在')
 ok(existsSync(voicePath), 'assets/voice.mp3 存在')
+ok(existsSync(voiceWavPath), 'assets/voice.wav 存在（Windows 宿主完成音 / SoundPlayer）')
 
 if (existsSync(spritePath)) {
   const buf = readFileSync(spritePath)
@@ -49,10 +51,19 @@ if (existsSync(voicePath)) {
   ok(isMp3, 'voice.mp3 是合法 MP3（ID3/MPEG 头）')
   ok(buf.length > 16 * 1024, `voice.mp3 大小合理（${buf.length} bytes）`)
 }
+if (existsSync(voiceWavPath)) {
+  const buf = readFileSync(voiceWavPath)
+  const isWav = buf.length > 44 && buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WAVE'
+  ok(isWav, 'voice.wav 是合法 WAV（RIFF/WAVE 头）')
+  // System.Media.SoundPlayer 只认 PCM WAV：格式块 1 = PCM，取值 1。
+  const pcm = isWav && buf.readUInt16LE(20) === 1
+  ok(pcm, 'voice.wav 是 PCM 编码（SoundPlayer 只支持 PCM）')
+  ok(buf.length < 2 * 1024 * 1024, `voice.wav 体积可控（${buf.length} bytes）`)
+}
 
 // 2. 静态插件源码：标准 ESM 导出，并包含 Host / Client 的关键能力
 for (const [name, mustContain] of [
-  ['plugin/src/index.ts', ['export const inject', 'export function apply(ctx)', 'kun_pet_debug', '/kun-pet/state', 'agentsService', "ctx.on('agent/status'", "ctx.on('tools/execute'"]],
+  ['plugin/src/index.ts', ['export const inject', 'export function apply(ctx)', 'kun_pet_debug', '/kun-pet/state', 'agentsService', "ctx.on('agent/status'", "ctx.on('tools/execute'", "ctx.on('agent/request-error'", 'node:child_process', 'readFileSync']],
   ['plugin/src/client/index.ts', ['export const inject', 'export function apply(ctx)', 'shell.overlay', 'ROWS', 'KunPet']],
 ]) {
   const p = join(root, name)
@@ -64,6 +75,13 @@ for (const [name, mustContain] of [
     }
   }
 }
+
+// 3. DSH 0.2 破坏性变更回归护栏（先剥掉注释，避免命中说明文字）
+const hostSrc = readFileSync(join(root, 'plugin/src/index.ts'), 'utf-8')
+const hostCode = hostSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+ok(!/shell\.run\(/.test(hostCode), 'Host 源码不再调用 0.1 的 shell.run()（0.2 已拆成 resolve()/execute()）')
+ok(!/ctx\.get\('shell'\)/.test(hostCode), 'Host 源码不再取 shell 服务')
+ok(/typeof next === 'function' \? next\(\)/.test(hostCode), "agent/request-error 是 waterfall：监听器调用 next() 放行")
 
 console.log(failed === 0 ? '\n✅ 校验通过' : `\n❌ ${failed} 项校验失败`)
 process.exit(failed === 0 ? 0 : 1)

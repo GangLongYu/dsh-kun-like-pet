@@ -29,6 +29,7 @@ window.__ModuleLoader__.load({
 		let react = require("react");
 		react = __toESM(react, 1);
 		//#region src/client/index.ts
+		const name = "dsh-kun-like-pet";
 		const inject = ["slots"];
 		const CSS = `
 .kun-pet-bubble {
@@ -60,7 +61,7 @@ window.__ModuleLoader__.load({
 }
 `;
 		function apply(ctx) {
-			const slots = ctx.get("slots");
+			const slots = ctx.get("slots") ?? ctx.slots;
 			if (slots === void 0) return;
 			const styleEl = document.createElement("style");
 			styleEl.textContent = CSS;
@@ -238,7 +239,7 @@ window.__ModuleLoader__.load({
 					let alive = true;
 					const sync = async () => {
 						try {
-							const res = await fetch("/kun-pet/state");
+							const res = await fetch("/kun-pet/state", { cache: "no-store" });
 							if (!res.ok) return;
 							const s = await res.json();
 							if (!alive || !s) return;
@@ -454,6 +455,7 @@ window.__ModuleLoader__.load({
 		//#endregion
 		exports.apply = apply;
 		exports.inject = inject;
+		exports.name = name;
 		return module.exports;
 	}
 });

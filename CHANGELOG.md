@@ -1,5 +1,19 @@
 # 更新日志
 
+## 2.1.0 — DSH 0.2 兼容
+
+修复 2.0.0 在 DSH 0.2 下**完全不加载**的问题。
+
+- **peerDependencies 版本门禁**：`@deepseek-ai/dsh-client-ui-slots` / `@deepseek-ai/dsh-tools` 由 `^0.1.0-rc.6` 改为 `^0.2.0-rc.2`，并补上 `engines.dsh`。DSH 0.2 的 `dsh-app-boot` 会校验插件所有 `@deepseek-ai/dsh*` peer，任一条不满足即静默跳过整个 bundle。
+- **`shell.run()` 已被移除**：0.2 的 `ShellExecutor` 只有 `resolve()` + `execute()`。完成音改为直接 `spawn` 子进程（不经 shell 缝，避免被会话沙箱降级），并从 `inject` 移除 `shell`。
+- **`agent/request-error` 是 waterfall 事件**：旧监听器不调用 `next()`，会否决内置行为与后续监听器（含重试策略）。现在监听后原样放行。
+- Windows 完成音改用 `assets/voice.wav` + `System.Media.SoundPlayer`（winmm），不再依赖 WPF `MediaPlayer` / Media Foundation；WAV 缺失时退回 MP3 + MediaPlayer。
+- 素材读取由 Harness `fs` 服务改为 `node:fs`：素材属于插件包自身，不受会话 workspace 沙箱管辖；`inject` 相应移除 `fs`。
+- `dsh.client.inject` 中已下线的 `@deepseek-ai/dsh-client-runtime` 换成真实存在的 `@deepseek-ai/dsh-client-ui-renderer`。
+- `tsdown.config.ts` 的客户端 external 列表改为对齐 0.2 web shell 的真实模块表（react / react-dom / cordis / dsh-client-store / dsh-client-ui-slots / dsh-client-ui-primitives / dsh-client-ui-dockkit）。
+- 校验脚本新增回归护栏：DSH peer 范围必须面向 0.2、源码不得再用 `shell.run()`、waterfall 必须放行 `next()`、`voice.wav` 必须是 PCM、构建产物不得残留 `dsh-client-runtime`。
+- README 重写：补上 0.2 适配说明、三种本地安装方式、旧安装修复、以及把新代码推到 GitHub 的完整流程。
+
 ## 2.0.0 — DSH 静态 Bundle
 
 - 从会话级 `cordis_define` 动态插件迁移为可安装到 profile 的静态 bundle。

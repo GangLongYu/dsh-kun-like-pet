@@ -1,16 +1,20 @@
 // @ts-nocheck
 // =============================================================================
-// Kun Like 桌宠 · DSH 本地静态插件（Client 半）
-// 从动态 cordis_define 包转换为本地 bundle 插件。
+// Kun Like 桌宠 · DSH 本地静态 bundle 插件（Client 半）
 //
 // 职责：
 //   1. 注入 shell.overlay 插槽，在 Web 界面右下角渲染桌宠
 //   2. 按 8 列 × 9 行的精灵图契约播放 9 种状态动画
 //   3. 支持拖动（跑步动画）、点击（挥手互动 + 浏览器端播放语音）
 //   4. 每 400ms 通过 /kun-pet/state 同步宿主端状态机
+//
+// DSH 0.2：客户端入口契约不变（window.__ModuleLoader__ 注册 + 导出
+// inject/apply，通过 ctx.slots.inject / ctx.slots.register 注册插槽）。
+// 这里额外兼容 ctx.get('slots') 与 ctx.slots 两种取服务写法。
 // =============================================================================
 import React from 'react'
 
+export const name = 'dsh-kun-like-pet'
 export const inject = ['slots']
 
 const CSS = `
@@ -44,7 +48,7 @@ const CSS = `
 `
 
 export function apply(ctx) {
-  const slots = ctx.get('slots')
+  const slots = ctx.get('slots') ?? ctx.slots
   if (slots === undefined) return
 
   // 注入样式
@@ -120,7 +124,7 @@ export function apply(ctx) {
       let alive = true
       const sync = async () => {
         try {
-          const res = await fetch('/kun-pet/state')
+          const res = await fetch('/kun-pet/state', { cache: 'no-store' })
           if (!res.ok) return
           const s = await res.json()
           if (!alive || !s) return

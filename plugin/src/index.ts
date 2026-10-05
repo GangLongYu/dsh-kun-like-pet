@@ -1,44 +1,42 @@
 // @ts-nocheck
 // =============================================================================
-// Kun Like 桌宠 · DSH 本地静态插件（Host 半）
-// 从动态 cordis_define 包转换为本地 bundle 插件，重启后仍由 profile 自动装配。
+// Kun Like 桌宠 · DSH 本地静态 bundle 插件（Host 半）
 //
 // 职责：
-//   1. 读取本地素材（精灵图 + 完成音），通过 webServer 注册 HTTP 路由给浏览器加载
-//   2. 轮询 agents 服务，按 Agent 的 running → idle 转换推导桌宠状态
-//   3. 任务完成时由宿主进程用系统命令播放「你干嘛~哎哟」（全窗口/全会话可闻）
+//   1. 读取包内素材（精灵图 + 完成音），通过 webServer 注册 HTTP 路由给浏览器加载
+//   2. 监听 agent/status 并以 agents.list() 轮询兜底，推导桌宠状态机
+//   3. 任务完成时由宿主进程播放「你干嘛~哎哟」（跨平台，不经 shell 缝）
 //   4. 提供 /kun-pet/state HTTP 状态接口与 kun_pet_debug 调试工具
+//
+// DSH 0.2 适配说明（相对 2.0.0 的 0.1 实现）：
+//   · 0.1 的 `shell.run(spec)` 已拆成 `ShellExecutor.resolve()` + `execute()`，
+//     且解析结果会带上执行器的默认沙箱策略。桌宠完成音只是一次性界面反馈，
+//     不需要工作目录 / 超时 / 沙箱语义（Windows 沙箱在只读模式下会把
+//     PowerShell 降级为 ConstrainedLanguage，WPF MediaPlayer 直接不可用），
+//     因此这里直接 spawn 子进程，绕开会话沙箱。
+//   · 素材同理走 node:fs：它们是插件包自身的文件，不属于会话 workspace。
+//   · agent/request-error 是 waterfall 事件，监听器必须调用 next() 放行，
+//     否则会否决内置行为与后续重试链。
+//   · Windows 完成音改用 WAV + System.Media.SoundPlayer（winmm），不再依赖
+//     WPF MediaPlayer / Media Foundation；MP3 仅在缺少 WAV 时作为退路。
 // =============================================================================
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { existsSync, readFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 // ===== 配置区 =====
 const CONFIG = {
   // 精灵图路径（8 列 × 9 行、每格 192×208 的 WebP）
   spritePath: fileURLToPath(new URL('../../assets/spritesheet.webp', import.meta.url)),
-  // 任务完成提示音路径（mp3）
+  // 任务完成提示音路径（mp3，浏览器点击互动也用它）
   voicePath: fileURLToPath(new URL('../../assets/voice.mp3', import.meta.url)),
-  // 宿主进程系统级播放命令：Windows 用 WPF MediaPlayer（SoundPlayer
-  // 不支持 MP3），macOS 用 afplay，Linux 用 ffplay。
-  playCommand: (path) => {
-    if (process.platform === 'win32') {
-      const p = String(path).replace(/'/g, "''")
-      const script = [
-        'Add-Type -AssemblyName PresentationCore',
-        '$player = New-Object System.Windows.Media.MediaPlayer',
-        `$player.Open([Uri]'${p}')`,
-        '$player.Play()',
-        'Start-Sleep -Milliseconds 4200',
-        '$player.Close()',
-      ].join('; ')
-      const encoded = Buffer.from(script, 'utf16le').toString('base64')
-      return `powershell.exe -NoProfile -WindowStyle Hidden -STA -EncodedCommand ${encoded}`
-    }
-    if (process.platform === 'darwin') {
-      return "afplay '" + String(path).replace(/'/g, "'\\''") + "'"
-    }
-    return "ffplay -nodisp -autoexit '" + String(path).replace(/'/g, "'\\''") + "'"
-  },
+  // 宿主完成音的 WAV 版本：Windows 走 System.Media.SoundPlayer（winmm），
+  // 不依赖 Media Foundation，比 WPF MediaPlayer 可靠得多。
+  voiceWavPath: fileURLToPath(new URL('../../assets/voice.wav', import.meta.url)),
+  // 素材体积上限，防止误替换的大文件打爆内存
+  spriteMaxBytes: 16 * 1024 * 1024,
+  voiceMaxBytes: 8 * 1024 * 1024,
   // 状态轮询间隔（毫秒）
   pollMs: 500,
   // 庆祝动画持续时长（毫秒）
@@ -47,96 +45,102 @@ const CONFIG = {
   failedMs: 2600,
 }
 
+const PS_ARGS = (script) => [
+  '-NoProfile',
+  '-NonInteractive',
+  '-WindowStyle',
+  'Hidden',
+  '-STA',
+  '-EncodedCommand',
+  Buffer.from(script, 'utf16le').toString('base64'),
+]
+
+// 宿主进程系统级播放命令：
+//   Windows —— 首选 WAV + System.Media.SoundPlayer（winmm PlaySound，无需
+//   dispatcher/Media Foundation）；没有 WAV 时退回 MP3 + WPF MediaPlayer
+//   （System.Media.SoundPlayer 不支持 MP3）。
+//   macOS —— afplay；Linux —— ffplay。
+const voiceLaunch = (mp3Path, wavPath) => {
+  if (process.platform === 'win32') {
+    if (typeof wavPath === 'string' && wavPath !== '') {
+      const p = String(wavPath).replace(/'/g, "''")
+      return {
+        command: 'powershell.exe',
+        args: PS_ARGS(`$player = New-Object System.Media.SoundPlayer '${p}'; $player.PlaySync()`),
+      }
+    }
+    const p = String(mp3Path).replace(/'/g, "''")
+    const script = [
+      'Add-Type -AssemblyName PresentationCore',
+      '$player = New-Object System.Windows.Media.MediaPlayer',
+      `$player.Open([Uri]'${p}')`,
+      '$player.Volume = 1.0',
+      '$player.Play()',
+      'Start-Sleep -Milliseconds 4200',
+      '$player.Close()',
+    ].join('; ')
+    return { command: 'powershell.exe', args: PS_ARGS(script) }
+  }
+  if (process.platform === 'darwin') {
+    return { command: 'afplay', args: [String(mp3Path)] }
+  }
+  return { command: 'ffplay', args: ['-nodisp', '-autoexit', '-loglevel', 'quiet', String(mp3Path)] }
+}
+
 export const name = 'dsh-kun-like-pet'
 // Cordis only calls apply after every required Host service is ready. Without
 // these declarations a bundle appended after dsh-web-app can still race the
 // asynchronous service initializers and silently return before registering.
-export const inject = ['timer', 'tools', 'fs', 'webServer', 'agents', 'shell']
+export const inject = ['timer', 'tools', 'webServer', 'agents']
 
 export function apply(ctx) {
-  const fs = ctx.get('fs')
   const webServer = ctx.get('webServer')
-  if (fs === undefined || webServer === undefined) {
-    console.error('[kun-pet] fs or webServer service is unavailable')
+  if (webServer === undefined) {
+    console.error('[kun-pet] webServer service is unavailable')
     return
   }
 
   // ---------- load pet assets once ----------
-  let spriteBytes = null
-  let voiceBytes = null
   let disposed = false
   const routeDisposers = []
 
-  const registerRoutes = () => {
-    if (spriteBytes !== null) {
-      routeDisposers.push(webServer.register({
-        kind: 'exact',
-        path: '/kun-pet/spritesheet.webp',
-        handler: (req, res) => {
-          res.writeHead(200, {
-            'Content-Type': 'image/webp',
-            'Content-Length': String(spriteBytes.length),
-            'Cache-Control': 'public, max-age=86400',
-          })
-          res.end(spriteBytes)
-        },
-      }))
+  const loadAsset = (label, path, maxBytes) => {
+    try {
+      const bytes = readFileSync(path)
+      if (bytes.length > maxBytes) {
+        console.error(`[kun-pet] ${label} exceeds ${maxBytes} bytes, skipped`)
+        return null
+      }
+      console.log(`[kun-pet] ${label} loaded:`, bytes.length, 'bytes')
+      return bytes
+    } catch (err) {
+      console.error(`[kun-pet] failed to load ${label}:`, err)
+      return null
     }
-    if (voiceBytes !== null) {
-      routeDisposers.push(webServer.register({
-        kind: 'exact',
-        path: '/kun-pet/voice.mp3',
-        handler: (req, res) => {
-          res.writeHead(200, {
-            'Content-Type': 'audio/mpeg',
-            'Content-Length': String(voiceBytes.length),
-            'Cache-Control': 'public, max-age=86400',
-          })
-          res.end(voiceBytes)
-        },
-      }))
-    }
+  }
+
+  const spriteBytes = loadAsset('spritesheet', CONFIG.spritePath, CONFIG.spriteMaxBytes)
+  const voiceBytes = loadAsset('voice', CONFIG.voicePath, CONFIG.voiceMaxBytes)
+  const voiceWavPath = existsSync(CONFIG.voiceWavPath) ? CONFIG.voiceWavPath : null
+
+  const registerBinaryRoute = (path, bytes, contentType) => {
+    if (bytes === null) return
     routeDisposers.push(webServer.register({
       kind: 'exact',
-      path: '/kun-pet/state',
+      path,
       handler: (req, res) => {
-        Promise.resolve(assetsReady).then(() => {
-          res.writeHead(200, {
-            'Content-Type': 'application/json; charset=utf-8',
-            'Cache-Control': 'no-store',
-          })
-          res.end(JSON.stringify({
-            mode,
-            seq,
-            spriteUrl: spriteBytes !== null ? '/kun-pet/spritesheet.webp' : null,
-            voiceUrl: voiceBytes !== null ? '/kun-pet/voice.mp3' : null,
-          }))
-        }).catch((err) => {
-          if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: String(err && err.message ? err.message : err) }))
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Content-Length': String(bytes.length),
+          'Cache-Control': 'public, max-age=86400',
         })
+        res.end(bytes)
       },
     }))
   }
 
-  const loadAssets = async () => {
-    try {
-      const target = await fs.resolve(CONFIG.spritePath)
-      spriteBytes = await fs.readBytes(target, undefined, 16 * 1024 * 1024)
-      console.log('[kun-pet] spritesheet loaded:', spriteBytes.length, 'bytes')
-    } catch (err) {
-      console.error('[kun-pet] failed to load spritesheet:', err)
-    }
-    try {
-      const target = await fs.resolve(CONFIG.voicePath)
-      voiceBytes = await fs.readBytes(target, undefined, 8 * 1024 * 1024)
-      console.log('[kun-pet] voice loaded:', voiceBytes.length, 'bytes')
-    } catch (err) {
-      console.error('[kun-pet] failed to load voice:', err)
-    }
-    if (!disposed) registerRoutes()
-  }
-  const assetsReady = loadAssets()
+  registerBinaryRoute('/kun-pet/spritesheet.webp', spriteBytes, 'image/webp')
+  registerBinaryRoute('/kun-pet/voice.mp3', voiceBytes, 'audio/mpeg')
 
   // ---------- pet state machine (polling-driven) ----------
   let mode = 'idle'
@@ -208,16 +212,14 @@ export function apply(ctx) {
   }
 
   const playSystemVoice = () => {
-    const shell = ctx.get('shell')
-    if (shell === undefined) {
-      lastPlayError = 'shell service unavailable'
-      return
-    }
     try {
-      const spec = shell.resolve({ command: CONFIG.playCommand(CONFIG.voicePath) })
-      shell.run(spec).catch((err) => {
+      const { command, args } = voiceLaunch(CONFIG.voicePath, voiceWavPath)
+      const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true })
+      child.on('error', (err) => {
         lastPlayError = String(err && err.message ? err.message : err)
+        console.error('[kun-pet] voice playback failed:', err)
       })
+      child.unref()
       lastPlayError = null
     } catch (err) {
       lastPlayError = String(err && err.message ? err.message : err)
@@ -360,8 +362,8 @@ export function apply(ctx) {
   const stopPolling = ctx.interval(poll, CONFIG.pollMs)
   ctx.effect(() => stopPolling)
 
-  // Static plugins receive the Host event bus directly. Polling remains as a
-  // compatibility fallback and also reconciles disposal/missed events.
+  // Static bundle plugins receive the Host event bus directly. Polling remains
+  // as a compatibility fallback and also reconciles disposal/missed events.
   ctx.on('agent/status', (payload) => {
     if (!payload || !payload.agent) return
     const status = payload.status === 'running' ? 'running' : 'idle'
@@ -432,13 +434,17 @@ export function apply(ctx) {
     return p
   })
 
-  ctx.on('agent/request-error', (payload) => {
+  // `agent/request-error` is a waterfall: a listener that never calls `next()`
+  // vetoes the built-in behavior and every later listener (the retry policy),
+  // so the pet only observes and then passes the chain through.
+  ctx.on('agent/request-error', (payload, next) => {
     rawRequestError++
     if (payload && payload.agent) {
       flagsOf(payload.agent).errored = true
       errorMarks++
     }
     showFailed()
+    return typeof next === 'function' ? next() : undefined
   })
 
   // ---------- debug tool ----------
@@ -476,4 +482,25 @@ export function apply(ctx) {
       })
     },
   })))
+
+  // ---------- debug HTTP endpoint (registered last: the handler closes over
+  // the state machine declared above) ----------
+  if (!disposed) {
+    routeDisposers.push(webServer.register({
+      kind: 'exact',
+      path: '/kun-pet/state',
+      handler: (req, res) => {
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        })
+        res.end(JSON.stringify({
+          mode,
+          seq,
+          spriteUrl: spriteBytes !== null ? '/kun-pet/spritesheet.webp' : null,
+          voiceUrl: voiceBytes !== null ? '/kun-pet/voice.mp3' : null,
+        }))
+      },
+    }))
+  }
 }

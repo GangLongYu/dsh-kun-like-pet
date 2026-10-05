@@ -1,113 +1,114 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
+import { existsSync, readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 //#region src/index.ts
 const CONFIG = {
 	spritePath: fileURLToPath(new URL("../../assets/spritesheet.webp", import.meta.url)),
 	voicePath: fileURLToPath(new URL("../../assets/voice.mp3", import.meta.url)),
-	playCommand: (path) => {
-		if (process.platform === "win32") {
-			const script = [
-				"Add-Type -AssemblyName PresentationCore",
-				"$player = New-Object System.Windows.Media.MediaPlayer",
-				`$player.Open([Uri]'${String(path).replace(/'/g, "''")}')`,
-				"$player.Play()",
-				"Start-Sleep -Milliseconds 4200",
-				"$player.Close()"
-			].join("; ");
-			return `powershell.exe -NoProfile -WindowStyle Hidden -STA -EncodedCommand ${Buffer.from(script, "utf16le").toString("base64")}`;
-		}
-		if (process.platform === "darwin") return "afplay '" + String(path).replace(/'/g, "'\\''") + "'";
-		return "ffplay -nodisp -autoexit '" + String(path).replace(/'/g, "'\\''") + "'";
-	},
+	voiceWavPath: fileURLToPath(new URL("../../assets/voice.wav", import.meta.url)),
+	spriteMaxBytes: 16777216,
+	voiceMaxBytes: 8388608,
 	pollMs: 500,
 	celebrateMs: 4800,
 	failedMs: 2600
+};
+const PS_ARGS = (script) => [
+	"-NoProfile",
+	"-NonInteractive",
+	"-WindowStyle",
+	"Hidden",
+	"-STA",
+	"-EncodedCommand",
+	Buffer.from(script, "utf16le").toString("base64")
+];
+const voiceLaunch = (mp3Path, wavPath) => {
+	if (process.platform === "win32") {
+		if (typeof wavPath === "string" && wavPath !== "") {
+			const p = String(wavPath).replace(/'/g, "''");
+			return {
+				command: "powershell.exe",
+				args: PS_ARGS(`$player = New-Object System.Media.SoundPlayer '${p}'; $player.PlaySync()`)
+			};
+		}
+		const script = [
+			"Add-Type -AssemblyName PresentationCore",
+			"$player = New-Object System.Windows.Media.MediaPlayer",
+			`$player.Open([Uri]'${String(mp3Path).replace(/'/g, "''")}')`,
+			"$player.Volume = 1.0",
+			"$player.Play()",
+			"Start-Sleep -Milliseconds 4200",
+			"$player.Close()"
+		].join("; ");
+		return {
+			command: "powershell.exe",
+			args: PS_ARGS(script)
+		};
+	}
+	if (process.platform === "darwin") return {
+		command: "afplay",
+		args: [String(mp3Path)]
+	};
+	return {
+		command: "ffplay",
+		args: [
+			"-nodisp",
+			"-autoexit",
+			"-loglevel",
+			"quiet",
+			String(mp3Path)
+		]
+	};
 };
 const name = "dsh-kun-like-pet";
 const inject = [
 	"timer",
 	"tools",
-	"fs",
 	"webServer",
-	"agents",
-	"shell"
+	"agents"
 ];
 function apply(ctx) {
-	const fs = ctx.get("fs");
 	const webServer = ctx.get("webServer");
-	if (fs === void 0 || webServer === void 0) {
-		console.error("[kun-pet] fs or webServer service is unavailable");
+	if (webServer === void 0) {
+		console.error("[kun-pet] webServer service is unavailable");
 		return;
 	}
-	let spriteBytes = null;
-	let voiceBytes = null;
 	let disposed = false;
 	const routeDisposers = [];
-	const registerRoutes = () => {
-		if (spriteBytes !== null) routeDisposers.push(webServer.register({
-			kind: "exact",
-			path: "/kun-pet/spritesheet.webp",
-			handler: (req, res) => {
-				res.writeHead(200, {
-					"Content-Type": "image/webp",
-					"Content-Length": String(spriteBytes.length),
-					"Cache-Control": "public, max-age=86400"
-				});
-				res.end(spriteBytes);
+	const loadAsset = (label, path, maxBytes) => {
+		try {
+			const bytes = readFileSync(path);
+			if (bytes.length > maxBytes) {
+				console.error(`[kun-pet] ${label} exceeds ${maxBytes} bytes, skipped`);
+				return null;
 			}
-		}));
-		if (voiceBytes !== null) routeDisposers.push(webServer.register({
-			kind: "exact",
-			path: "/kun-pet/voice.mp3",
-			handler: (req, res) => {
-				res.writeHead(200, {
-					"Content-Type": "audio/mpeg",
-					"Content-Length": String(voiceBytes.length),
-					"Cache-Control": "public, max-age=86400"
-				});
-				res.end(voiceBytes);
-			}
-		}));
+			console.log(`[kun-pet] ${label} loaded:`, bytes.length, "bytes");
+			return bytes;
+		} catch (err) {
+			console.error(`[kun-pet] failed to load ${label}:`, err);
+			return null;
+		}
+	};
+	const spriteBytes = loadAsset("spritesheet", CONFIG.spritePath, CONFIG.spriteMaxBytes);
+	const voiceBytes = loadAsset("voice", CONFIG.voicePath, CONFIG.voiceMaxBytes);
+	const voiceWavPath = existsSync(CONFIG.voiceWavPath) ? CONFIG.voiceWavPath : null;
+	const registerBinaryRoute = (path, bytes, contentType) => {
+		if (bytes === null) return;
 		routeDisposers.push(webServer.register({
 			kind: "exact",
-			path: "/kun-pet/state",
+			path,
 			handler: (req, res) => {
-				Promise.resolve(assetsReady).then(() => {
-					res.writeHead(200, {
-						"Content-Type": "application/json; charset=utf-8",
-						"Cache-Control": "no-store"
-					});
-					res.end(JSON.stringify({
-						mode,
-						seq,
-						spriteUrl: spriteBytes !== null ? "/kun-pet/spritesheet.webp" : null,
-						voiceUrl: voiceBytes !== null ? "/kun-pet/voice.mp3" : null
-					}));
-				}).catch((err) => {
-					if (!res.headersSent) res.writeHead(500, { "Content-Type": "application/json" });
-					res.end(JSON.stringify({ error: String(err && err.message ? err.message : err) }));
+				res.writeHead(200, {
+					"Content-Type": contentType,
+					"Content-Length": String(bytes.length),
+					"Cache-Control": "public, max-age=86400"
 				});
+				res.end(bytes);
 			}
 		}));
 	};
-	const loadAssets = async () => {
-		try {
-			const target = await fs.resolve(CONFIG.spritePath);
-			spriteBytes = await fs.readBytes(target, void 0, 16777216);
-			console.log("[kun-pet] spritesheet loaded:", spriteBytes.length, "bytes");
-		} catch (err) {
-			console.error("[kun-pet] failed to load spritesheet:", err);
-		}
-		try {
-			const target = await fs.resolve(CONFIG.voicePath);
-			voiceBytes = await fs.readBytes(target, void 0, 8388608);
-			console.log("[kun-pet] voice loaded:", voiceBytes.length, "bytes");
-		} catch (err) {
-			console.error("[kun-pet] failed to load voice:", err);
-		}
-		if (!disposed) registerRoutes();
-	};
-	const assetsReady = loadAssets();
+	registerBinaryRoute("/kun-pet/spritesheet.webp", spriteBytes, "image/webp");
+	registerBinaryRoute("/kun-pet/voice.mp3", voiceBytes, "audio/mpeg");
 	let mode = "idle";
 	let seq = 0;
 	let celebrating = false;
@@ -172,16 +173,18 @@ function apply(ctx) {
 		setMode(next);
 	};
 	const playSystemVoice = () => {
-		const shell = ctx.get("shell");
-		if (shell === void 0) {
-			lastPlayError = "shell service unavailable";
-			return;
-		}
 		try {
-			const spec = shell.resolve({ command: CONFIG.playCommand(CONFIG.voicePath) });
-			shell.run(spec).catch((err) => {
-				lastPlayError = String(err && err.message ? err.message : err);
+			const { command, args } = voiceLaunch(CONFIG.voicePath, voiceWavPath);
+			const child = spawn(command, args, {
+				detached: true,
+				stdio: "ignore",
+				windowsHide: true
 			});
+			child.on("error", (err) => {
+				lastPlayError = String(err && err.message ? err.message : err);
+				console.error("[kun-pet] voice playback failed:", err);
+			});
+			child.unref();
 			lastPlayError = null;
 		} catch (err) {
 			lastPlayError = String(err && err.message ? err.message : err);
@@ -370,13 +373,14 @@ function apply(ctx) {
 		p.then(() => markToolSettled(isQuestion), () => markToolSettled(isQuestion));
 		return p;
 	});
-	ctx.on("agent/request-error", (payload) => {
+	ctx.on("agent/request-error", (payload, next) => {
 		rawRequestError++;
 		if (payload && payload.agent) {
 			flagsOf(payload.agent).errored = true;
 			errorMarks++;
 		}
 		showFailed();
+		return typeof next === "function" ? next() : void 0;
 	});
 	ctx.effect(() => ctx.get("tools").register(defineTool({
 		name: "kun_pet_debug",
@@ -415,6 +419,22 @@ function apply(ctx) {
 			});
 		}
 	})));
+	if (!disposed) routeDisposers.push(webServer.register({
+		kind: "exact",
+		path: "/kun-pet/state",
+		handler: (req, res) => {
+			res.writeHead(200, {
+				"Content-Type": "application/json; charset=utf-8",
+				"Cache-Control": "no-store"
+			});
+			res.end(JSON.stringify({
+				mode,
+				seq,
+				spriteUrl: spriteBytes !== null ? "/kun-pet/spritesheet.webp" : null,
+				voiceUrl: voiceBytes !== null ? "/kun-pet/voice.mp3" : null
+			}));
+		}
+	}));
 }
 //#endregion
 export { apply, inject, name };

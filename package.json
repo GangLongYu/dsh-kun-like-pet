@@ -1,6 +1,6 @@
 {
   "name": "dsh-kun-like-pet",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": false,
   "description": "Kun Like 桌宠 —— 可安装的 DeepSeek Harness 静态 bundle 插件",
   "type": "module",
@@ -21,7 +21,7 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-slots"
       ],
       "platform": "web"
@@ -60,8 +60,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
     "react": "^18.2.0"
   },
   "devDependencies": {
@@ -70,6 +70,7 @@
     "typescript": "^5.9.0"
   },
   "engines": {
+    "dsh": "^0.2.0-rc.2",
     "node": ">=22.19"
   }
 }

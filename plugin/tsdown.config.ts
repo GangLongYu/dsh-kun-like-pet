@@ -2,11 +2,19 @@ import type { UserConfig } from 'tsdown'
 
 const PLUGIN_ID = 'dsh-kun-like-pet'
 
+// 浏览器模块表（DSH 0.2 web shell 的 staticModules）里已有的平台单例。
+// 这些必须以 require() 形式保留外部依赖，否则会打进第二份 React。
+// 其余（非基线的动态包）按 dsh.client.external 声明后同样走模块表。
 const CLIENT_EXTERNALS = [
-  'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client',
-  'cordis',
+  'react',
+  'react/jsx-runtime',
+  'react-dom',
+  'react-dom/client',
+  '@deepseek-ai/cordis',
+  '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-runtime/client',
+  '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-ui-dockkit',
 ]
 
 const hostBundle: UserConfig = {
