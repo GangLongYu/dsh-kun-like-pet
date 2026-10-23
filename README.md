@@ -134,7 +134,7 @@ npx @deepseek-ai/dsh --profile web --dump-config
 
 桌面版把上面的 `--profile web` 全部换成 `--profile desktop`；两边是独立安装，升级 Web 版不会顺带升级桌面版。
 
-> 不建议用 `dsh plugin allow-version` 绕过门禁：那只是关掉检查，0.2 里 `shell.run` 已经不存在，完成音仍然是坏的。请换成 2.1.0。
+> 不建议用 `dsh plugin allow-version` 绕过门禁：那只是关掉检查，0.2 里 `shell.run` 已经不存在，完成音仍然是坏的。请换成 2.2.0。
 
 旧版转换还曾用过 `@dsh-external/dsh-kun-like-pet`（包内没有 `dsh.bundle`）。若残留，一并清理：
 
