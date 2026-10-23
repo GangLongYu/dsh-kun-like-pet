@@ -2,13 +2,13 @@
 
 - 原项目：[liyupi/dsh-kun-like-pet](https://github.com/liyupi/dsh-kun-like-pet)
 
-> 一只住在 DeepSeek Harness Web 界面右下角的小坤宠。它会根据 Agent 状态工作、思考、等待、庆祝或难过，并在任务完成时播放「你干嘛~哎哟」。
+> 一只住在 DeepSeek Harness 界面右下角的小坤宠。它会根据 Agent 状态工作、思考、等待、庆祝或难过，并在任务完成时播放「你干嘛~哎哟」。
 
 ![Kun Like 桌宠 · 工作中](docs/screenshot-working.png)
 
 ![Kun Like 桌宠 · 挥手](docs/screenshot-wave.png)
 
-当前 `2.1.0` 是 **DSH 0.2 兼容版**：仍是安装到 profile 的静态 bundle（Host + Client 两半），但已修掉 0.2 的两处破坏性变更，详见 [DSH 0.2 适配](#dsh-02-适配要点)。
+当前 `2.2.0` 是 **DSH 0.2 兼容版**，并补上了桌面客户端安装路径：仍是安装到 profile 的静态 bundle（Host + Client 两半），0.2 的两处破坏性变更修法见 [DSH 0.2 适配](#dsh-02-适配要点)，桌面版装法见 [方式 D](#方式-d装到桌面版客户端)。
 
 ## 功能
 
@@ -58,7 +58,9 @@ incompatible with dsh 0.2.0-rc.2: peerDependencies {"@deepseek-ai/dsh-client-ui-
 
 ## 安装
 
-三种方式，选一种即可。装完都要**重启 DSH**（Web 页面刷新不够）。
+四种方式，选一种即可。装完都要**重启 DSH**（Web 页面刷新不够）。
+
+> **Web 和桌面客户端是两个 profile。** `npx @deepseek-ai/dsh web` 用 `~/.dsh/profiles/web`，桌面客户端用 `~/.dsh/profiles/desktop`。插件只装在其中一个 profile 里时，另一个看不到它——下面命令里的 `--profile` 必须选对。不确定装到哪了跑 `npm run status`。
 
 ### 方式 A：从 GitHub 安装（推荐给只是要用的人）
 
@@ -90,6 +92,28 @@ npx @deepseek-ai/dsh plugin --profile web add C:\Users\dragon\Desktop\dsh-kun-li
 npx @deepseek-ai/dsh web
 ```
 
+### 方式 D：装到桌面版客户端
+
+桌面版不需要另做一份插件：它内部跑的就是同一套 `dsh-web-app` bundle，渲染器平台同样是 `web`，所以 `dsh.client.platform: "web"` 在桌面版里是正确声明。差别只在 profile —— 桌面版读 `~/.dsh/profiles/desktop`。
+
+命令行安装（推荐，和 Web 版唯一区别是 `--profile`）：
+
+```bash
+npx @deepseek-ai/dsh plugin --profile desktop add github:GangLongYu/dsh-kun-like-pet
+```
+
+然后**从托盘完全退出桌面版再启动**（关窗口只是隐藏，插件不会重新加载）。
+
+也可以在桌面版界面里装：侧边栏「插件」页 → 安装 → 填入 `github:GangLongYu/dsh-kun-like-pet`（或本地目录、npm 包名）。这一页最终也是走 `plugin_manager` 的 `installBundle`，装进的就是当前 desktop profile。
+
+确认桌面版到底装没装：
+
+```bash
+npm run status          # 列出每个 profile 的安装版本与 bundle 启用状态
+```
+
+Web 版和桌面版可以同时装、互不影响；想两边都有就两条 `add` 命令各跑一次。
+
 ## 从旧版升级 / 修复被门禁跳过的旧安装
 
 如果 profile 里装的是 `2.0.0`（它会被 0.2 静默跳过），先移除再装新版：
@@ -107,6 +131,8 @@ npx @deepseek-ai/dsh --profile web --dump-config
 ```
 
 只要输出里出现 `skipping profile bundle "dsh-kun-like-pet"`，就说明还在用被门禁拦下的旧版。
+
+桌面版把上面的 `--profile web` 全部换成 `--profile desktop`；两边是独立安装，升级 Web 版不会顺带升级桌面版。
 
 > 不建议用 `dsh plugin allow-version` 绕过门禁：那只是关掉检查，0.2 里 `shell.run` 已经不存在，完成音仍然是坏的。请换成 2.1.0。
 
@@ -127,6 +153,8 @@ http://127.0.0.1:3080/kun-pet/voice.mp3
 ```
 
 `/kun-pet/state` 返回 `{"mode":"idle","seq":0,"spriteUrl":"/kun-pet/spritesheet.webp","voiceUrl":"/kun-pet/voice.mp3"}`。如果 3080 已占用，DSH 会使用其他端口，请以启动日志为准。也可以用 `kun_pet_debug` 工具看状态机内部计数。
+
+桌面版同理，只是端口是桌面客户端自己分配的（例如 `http://127.0.0.1:59865/kun-pet/state`），以 `npm run status` 或界面里的地址为准。装错 profile 时接口会是 404、右下角也不会有桌宠，这两种现象基本就说明装到另一个 profile 去了。
 
 **完成音听不到？** 先确认这台机器真的有可用音频输出设备：
 
@@ -242,21 +270,69 @@ git config --get remote.origin.url
 gh auth status
 ```
 
-### 4. 打版本 / 发 Release（可选）
+### 4. 打版本 / 发 Release
 
 版本号写在 `package.json`，改完记得同步 `CHANGELOG.md`：
 
 ```bash
 npm run build
 npm test
-git add -A && git commit -m "chore: release v2.1.0"
-git tag v2.1.0
+npm run pack:check
+git add -A && git commit -m "chore: release v2.2.0"
+git tag v2.2.0
 git push origin main --tags
-npm pack                      # 产出 dsh-kun-like-pet-2.1.0.tgz
-gh release create v2.1.0 dsh-kun-like-pet-2.1.0.tgz --notes "DSH 0.2 兼容"
+npm pack                      # 产出 dsh-kun-like-pet-2.2.0.tgz
 ```
 
-别人就能用 `npx @deepseek-ai/dsh plugin --profile web add github:GangLongYu/dsh-kun-like-pet` 直接安装。
+建 Release。有 `gh` 时：
+
+```bash
+gh release create v2.2.0 dsh-kun-like-pet-2.2.0.tgz --title "v2.2.0" --notes "桌面客户端安装 + npm 发布说明"
+```
+
+没有 `gh` 就用 PAT 调 REST API（先建 Release 再往 `upload_url` 传 tgz）：
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/GangLongYu/dsh-kun-like-pet/releases \
+  -d '{"tag_name":"v2.2.0","name":"v2.2.0","body":"桌面客户端安装 + npm 发布说明"}'
+```
+
+别人就能用 `npx @deepseek-ai/dsh plugin --profile web add github:GangLongYu/dsh-kun-like-pet` 直接安装。注意 `github:` 安装默认取**默认分支**，所以 tag 和 main 都要推。
+
+## 发布到 npm（可选）
+
+**先看清楚：npm 上的 `dsh-kun-like-pet` 不是这个仓库。** 这个名字已被另一个发布者占用（`1.0.5`，1.x 动态插件），所以：
+
+- `... add dsh-kun-like-pet` 会装到别人的包，别这么用；
+- 想发布，必须换一个属于你的包名，并且**三处同步改**。DSH 的 Cordis 行按包名解析模块，名字对不上插件不会加载：
+  1. `package.json` 的 `name`（推荐 scoped，例如 `@your-scope/dsh-kun-like-pet`）；
+  2. `cordis.patch.yml` 里 `name:` 那一行；
+  3. `scripts/validate-bundle.mjs` 里 `pkg.name === 'dsh-kun-like-pet'` 的断言。
+
+改完之后：
+
+```bash
+npm login                     # 首次
+npm run build && npm test     # prepublishOnly 会再跑一遍 build + test + pack:check
+npm publish                   # scoped 包自动 public（package.json 已声明 publishConfig.access）
+```
+
+发布后桌面版「插件」页和 CLI 都能直接用包名安装：
+
+```bash
+npx @deepseek-ai/dsh plugin --profile desktop add @your-scope/dsh-kun-like-pet
+```
+
+选名字前先查占用：
+
+```bash
+npm view <name> version
+```
+
+不改名也能用，只是安装入口停在 `github:` 形式上——功能完全一样，桌面版一样能装。
 
 ### 5. 从原项目同步更新（可选）
 

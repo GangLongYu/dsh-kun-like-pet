@@ -1,5 +1,14 @@
 # 更新日志
 
+## 2.2.0 — 桌面客户端安装路径
+
+- 明确**桌面版与 Web 版是两个 profile**（`~/.dsh/profiles/desktop` vs `~/.dsh/profiles/web`）。插件代码不需要为桌面版改任何东西：桌面客户端加载的就是同一套 `dsh-web-app`，渲染器平台同样是 `web`，因此 `dsh.client.platform: "web"` 在桌面版里是正确声明；差别只在安装目标 profile。README 新增「方式 D：装到桌面版客户端」。
+- 新增 `npm run status`（`scripts/desktop-status.mjs`）：只读检查每个 profile 的依赖声明、`node_modules` 里的实际版本与 `dsh.profile.bundles` 启用状态，用来定位「装到另一个 profile 里了」这类问题（症状是接口 404、右下角没有桌宠）。
+- 新增 `.gitattributes` 统一 LF：Windows 上 `core.autocrlf=true` 会让每次 `npm run build` 都改写 `plugin/lib/*.map`，CI 的 `git diff --exit-code -- plugin/lib` 会因此误报。
+- 打包元数据：补 `homepage` / `bugs` / `publishConfig.access`，新增 `prepublishOnly`（`build` + `test` + `pack:check`）；`files` 收窄为只带 README 引用的两张截图，不再把 3 MB 的 `spritesheet-preview.png` 打进 npm 包与 Release 附件。
+- README 新增「发布到 npm」一节：npm 上的 `dsh-kun-like-pet` 已被其他发布者占用（`1.0.5`），并列出改名时必须同步修改的三处（`package.json` 的 `name`、`cordis.patch.yml` 的 `name`、`scripts/validate-bundle.mjs` 的断言）。
+- 发布流程改为 `tag` + GitHub Release + `.tgz` 附件，`gh` 与 REST API 两种写法都写进 README。
+
 ## 2.1.0 — DSH 0.2 兼容
 
 修复 2.0.0 在 DSH 0.2 下**完全不加载**的问题。

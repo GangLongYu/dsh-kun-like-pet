@@ -1,8 +1,8 @@
 {
   "name": "dsh-kun-like-pet",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": false,
-  "description": "Kun Like 桌宠 —— 可安装的 DeepSeek Harness 静态 bundle 插件",
+  "description": "Kun Like 桌宠 —— 可安装到 DeepSeek Harness Web 与桌面客户端的静态 bundle 插件",
   "type": "module",
   "main": "./plugin/lib/index.js",
   "exports": {
@@ -31,6 +31,7 @@
     "deepseek-harness",
     "dsh",
     "plugin",
+    "desktop",
     "desktop-pet",
     "kun",
     "桌宠"
@@ -41,13 +42,21 @@
     "type": "git",
     "url": "git+https://github.com/GangLongYu/dsh-kun-like-pet.git"
   },
+  "homepage": "https://github.com/GangLongYu/dsh-kun-like-pet#readme",
+  "bugs": {
+    "url": "https://github.com/GangLongYu/dsh-kun-like-pet/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "plugin/lib",
     "plugin/src",
     "plugin/tsconfig.json",
     "plugin/tsdown.config.ts",
     "assets",
-    "docs",
+    "docs/screenshot-*.png",
+    "docs/SPRITESHEET-CONTRACT.md",
     "demo",
     "scripts",
     "cordis.patch.yml",
@@ -56,7 +65,9 @@
   "scripts": {
     "build": "tsdown --config plugin/tsdown.config.ts",
     "test": "node scripts/validate.mjs && node scripts/validate-bundle.mjs && node scripts/smoke-host.mjs && node scripts/smoke-client.mjs",
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "npm pack --dry-run",
+    "status": "node scripts/desktop-status.mjs",
+    "prepublishOnly": "npm run build && npm test && npm run pack:check"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

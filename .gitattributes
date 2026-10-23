@@ -1,0 +1,18 @@
+# 构建产物 plugin/lib 必须能与源码逐字节对应：统一 LF，
+# 否则 Windows 上 core.autocrlf=true 会让每次 build 都把 lib 改脏，
+# CI 的 `git diff --exit-code -- plugin/lib` 也会误报。
+* text=auto
+
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+*.png binary
+*.webp binary
+*.mp3 binary
+*.wav binary
