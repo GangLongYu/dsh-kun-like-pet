@@ -302,6 +302,13 @@ curl -sS -X POST \
 
 别人就能用 `npx @deepseek-ai/dsh plugin --profile web add github:GangLongYu/dsh-kun-like-pet` 直接安装。注意 `github:` 安装默认取**默认分支**，所以 tag 和 main 都要推。
 
+### 5. 从原项目同步更新（可选）
+
+```bash
+git fetch upstream
+git merge upstream/main       # 或用 git rebase upstream/main
+```
+
 ## 发布到 npm（可选）
 
 **先看清楚：npm 上的 `dsh-kun-like-pet` 不是这个仓库。** 这个名字已被另一个发布者占用（`1.0.5`，1.x 动态插件），所以：
@@ -333,13 +340,6 @@ npm view <name> version
 ```
 
 不改名也能用，只是安装入口停在 `github:` 形式上——功能完全一样，桌面版一样能装。
-
-### 5. 从原项目同步更新（可选）
-
-```bash
-git fetch upstream
-git merge upstream/main       # 或用 git rebase upstream/main
-```
 
 ## 素材与许可
 
